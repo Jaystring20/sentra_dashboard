@@ -2,26 +2,28 @@ import { CheckCircle2, CircleDashed, Database, RotateCcw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button, Card, CardHeader, PageHeader } from '../components/ui'
 import { PipelineStrip } from '../components/widgets'
-import { config, isSupabaseConfigured } from '../lib/data/config'
+import { config } from '../lib/data/config'
+import { dataSource } from '../lib/data/source'
 import { useData } from '../lib/store'
 
 const FIELDS: [string, string, string][] = [
-  ['id', 'text / uuid', 'Unique feedback identifier'],
+  ['id', 'text', 'Unique feedback identifier'],
   ['original_message', 'text', 'Original customer feedback (email body)'],
   ['subject', 'text', 'Email subject (optional)'],
   ['source', 'text', 'Origin, e.g. Gmail'],
-  ['received_at', 'timestamptz', 'When the email was received'],
+  ['received_at', 'date & time', 'When the email was received'],
   ['customer_name', 'text', 'Sender name, where available'],
   ['customer_email', 'text', 'Sender email, where available'],
   ['sentiment', 'text', 'positive · neutral · negative'],
-  ['sentiment_score', 'numeric', '−1 to +1 (0–10 and 0–100 are also accepted)'],
+  ['sentiment_score', 'number', '−1 to +1 (0–10 and 0–100 are also accepted)'],
   ['category', 'text', 'e.g. Complaint, Praise, Suggestion, Question, Bug Report'],
   ['theme', 'text', 'Detected theme, e.g. Delivery'],
-  ['issue', 'text', 'Detected problem, null when none'],
+  ['issue', 'text', 'Detected problem, empty when none'],
   ['severity', 'text', 'low · medium · high · critical'],
   ['ai_summary', 'text', 'One-sentence AI summary'],
   ['status', 'text', 'new · in_review · actioned · resolved'],
-  ['created_at', 'timestamptz', 'Database insert time'],
+  ['created_at', 'date & time', 'When n8n wrote the row'],
+  ['gmail_message_id', 'text', 'Gmail message id, lets n8n skip duplicates (optional)'],
 ]
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -35,7 +37,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 export function Settings() {
   const { records, lastSynced, error, reload } = useData()
-  const host = isSupabaseConfigured ? new URL(config.supabaseUrl).host : '—'
+  const sheetsHost = config.sheetsApiUrl ? config.sheetsApiUrl.replace(/^https:\/\//, '').replace(/\/exec.*$/, '/exec').slice(0, 64) + '…' : '—'
   const resetIssues = () => {
     try {
       localStorage.removeItem('sentra-issue-status')
@@ -63,23 +65,34 @@ export function Settings() {
           />
           <dl className="divide-y divide-border border-t border-border px-5">
             <Row label="Mode">
-              {isSupabaseConfigured ? (
+              {dataSource.mode === 'demo' ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 size={14} className="text-good-text" /> Live database (Supabase)
+                  <CircleDashed size={14} className="text-warning-text" /> Demo data (no data source configured)
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">
-                  <CircleDashed size={14} className="text-warning-text" /> Demo data (no database configured)
+                  <CheckCircle2 size={14} className="text-good-text" /> Live · {dataSource.label}
                 </span>
               )}
             </Row>
-            <Row label="Project">{host}</Row>
-            <Row label="Feedback table">
-              <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{config.feedbackTable}</code>
-            </Row>
-            <Row label="Summary table">
-              <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{config.summaryTable}</code> <span className="text-ink-3">(optional)</span>
-            </Row>
+            {dataSource.mode === 'sheets' && (
+              <>
+                <Row label="Web app">{sheetsHost}</Row>
+                <Row label="Tabs">
+                  <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">feedback</code>, <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">executive_summaries</code> <span className="text-ink-3">(optional)</span>
+                </Row>
+                <Row label="Status changes">{config.sheetsToken ? 'Saved to the sheet' : <span className="text-warning-text">Read-only — set VITE_SHEETS_TOKEN</span>}</Row>
+                <Row label="Checks for new rows">Every {config.sheetsPollSeconds} s</Row>
+              </>
+            )}
+            {dataSource.mode === 'supabase' && (
+              <>
+                <Row label="Project">{new URL(config.supabaseUrl).host}</Row>
+                <Row label="Feedback table">
+                  <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{config.feedbackTable}</code>
+                </Row>
+              </>
+            )}
             <Row label="Records loaded">{records.length.toLocaleString()}</Row>
             <Row label="Last synced">{lastSynced ? lastSynced.toLocaleString() : '—'}</Row>
             <Row label="Status">{error ? <span className="text-critical-text">{error}</span> : 'Connected'}</Row>
@@ -96,20 +109,22 @@ export function Settings() {
           <CardHeader title="Connecting the live pipeline" subtitle="Sentra reads what n8n writes; it does not run the automation itself." />
           <ol className="list-decimal space-y-2.5 px-5 pb-5 pl-10 text-sm text-ink-2">
             <li>
-              Create the tables in Supabase with <code className="rounded bg-surface-2 px-1 text-xs">supabase/schema.sql</code>.
+              In your Google Sheet open <strong>Extensions → Apps Script</strong>, paste <code className="rounded bg-surface-2 px-1 text-xs">google-sheets/Code.gs</code> and run <code className="rounded bg-surface-2 px-1 text-xs">setupSheet</code> once.
             </li>
-            <li>In n8n: Gmail trigger → extract sender, subject and body → AI node returning the JSON fields below → Supabase “Insert row” into the feedback table.</li>
             <li>
-              Set <code className="rounded bg-surface-2 px-1 text-xs">VITE_SUPABASE_URL</code> and <code className="rounded bg-surface-2 px-1 text-xs">VITE_SUPABASE_ANON_KEY</code> in <code className="rounded bg-surface-2 px-1 text-xs">.env</code> and restart Sentra.
+              Add a script property <code className="rounded bg-surface-2 px-1 text-xs">SENTRA_TOKEN</code>, then deploy as a web app (execute as you, access: Anyone).
             </li>
-            <li>Enable Realtime on the feedback table so new emails appear instantly (otherwise Sentra polls every minute).</li>
-            <li>Optionally, a scheduled n8n workflow can write an AI executive summary to the summary table.</li>
+            <li>In n8n: Gmail trigger → AI node returning the fields below → Google Sheets “Append row” into the <code className="rounded bg-surface-2 px-1 text-xs">feedback</code> tab.</li>
+            <li>
+              Set <code className="rounded bg-surface-2 px-1 text-xs">VITE_SHEETS_API_URL</code> and <code className="rounded bg-surface-2 px-1 text-xs">VITE_SHEETS_TOKEN</code> (in <code className="rounded bg-surface-2 px-1 text-xs">.env</code> or Vercel) and redeploy.
+            </li>
+            <li>Optionally, a scheduled n8n workflow can append an AI executive summary to the <code className="rounded bg-surface-2 px-1 text-xs">executive_summaries</code> tab.</li>
           </ol>
         </Card>
       </div>
 
       <Card>
-        <CardHeader title="Feedback record contract" subtitle="Fields Sentra reads from each database row. Labels are normalised, so capitalisation from the AI does not matter." />
+        <CardHeader title="Feedback record contract" subtitle="Column headers in the feedback tab (one row per email). Labels are normalised, so capitalisation from the AI does not matter." />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead className="border-y border-border text-[11px] tracking-wide text-ink-3 uppercase">

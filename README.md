@@ -3,10 +3,10 @@
 Sentra is the dashboard at the end of the capstone pipeline. It turns analyzed customer feedback into sentiment, themes, recurring issues, alerts and AI insights. Every insight links back to the feedback records behind it.
 
 ```
-Customer → Gmail → n8n → AI analysis → Database (Supabase) → Sentra
+Customer → Gmail → n8n → AI analysis → Google Sheet → Sentra
 ```
 
-Sentra does not run the automation. n8n receives each email, asks the AI to analyze it and writes one structured row to the database. Sentra reads those rows, aggregates them and presents them.
+Sentra does not run the automation. n8n receives each email, asks the AI to analyze it and appends one structured row to a Google Sheet. Sentra reads those rows, aggregates them and presents them.
 
 ## Quick start
 
@@ -15,14 +15,16 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-With no database configured, Sentra runs on a built-in **demo dataset**: about 120 days of realistic feedback with some patterns built in. One complaint (slow support replies) is rising, one billing problem is critical, and staff and product quality are consistently praised. In demo mode the **Simulate email** button stands in for the n8n workflow writing a new row, so you can see the dashboard update live.
+With no data source configured, Sentra runs on a built-in **demo dataset**: about 120 days of realistic feedback with some patterns built in. One complaint (slow support replies) is rising, one billing problem is critical, and staff and product quality are consistently praised. In demo mode the **Simulate email** button stands in for the n8n workflow writing a new row, so you can see the dashboard update live.
 
-### Connect the live pipeline
+### Connect the live pipeline (Google Sheets)
 
-1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql) in the SQL editor.
-2. Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
-3. Build the n8n workflow (below) and point its Supabase node at the `feedback` table, using the **service role** key.
-4. Restart Sentra. New rows appear instantly through Supabase Realtime. If Realtime is off, Sentra checks for new rows every 60 seconds.
+1. Create the sheet and deploy its Apps Script web app by following [`google-sheets/README.md`](google-sheets/README.md). It takes about 10 minutes.
+2. Copy `.env.example` to `.env` and set `VITE_SHEETS_API_URL` (the web app URL) and `VITE_SHEETS_TOKEN`. On Vercel, add the same two variables under **Settings → Environment Variables** and redeploy.
+3. Build the n8n workflow (below) and finish it with a **Google Sheets → Append Row** node on the `feedback` tab.
+4. New rows show up in Sentra within 30 seconds, and status changes made in the dashboard are written back to the sheet.
+
+Sentra can also read from Supabase instead (`supabase/schema.sql`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). It uses Supabase only when no Sheets URL is set.
 
 ## n8n workflow (reference)
 
@@ -32,8 +34,8 @@ With no database configured, Sentra runs on a built-in **demo dataset**: about 1
 | 2 | **Set / Code** | Extract `from` name and email, `subject`, plain-text body, `date`, message id |
 | 3 | **AI node** (OpenAI / Anthropic / Gemini) | Prompt below, JSON output |
 | 4 | **Code** | Merge the email fields with the AI JSON |
-| 5 | **Supabase → Insert row** | Table `feedback`; `gmail_message_id` is unique, so re-runs cannot create duplicates |
-| (optional) | **Schedule → AI → Supabase** | Write a daily executive summary to `executive_summaries` |
+| 5 | **Google Sheets → Append Row** | Tab `feedback`, columns mapped as in [`google-sheets/README.md`](google-sheets/README.md#5-connect-n8n). Store the Gmail message id to skip duplicates |
+| (optional) | **Schedule → AI → Google Sheets** | Append a daily executive summary to the `executive_summaries` tab |
 
 Suggested AI instruction:
 
@@ -58,7 +60,7 @@ Reusing a fixed list of themes and issue names is what lets Sentra group feedbac
 
 ## Data contract
 
-The `feedback` row Sentra reads: `id, original_message, subject, source, received_at, customer_name, customer_email, sentiment, sentiment_score, category, theme, issue, severity, ai_summary, status, created_at`. The Settings page shows the same contract.
+The `feedback` tab columns (one row per email): `id, original_message, subject, source, received_at, customer_name, customer_email, sentiment, sentiment_score, category, theme, issue, severity, ai_summary, status, created_at`. The Settings page shows the same contract.
 
 ## What's in the dashboard
 
@@ -95,12 +97,12 @@ Pattern detection is rule-based and runs over the stored AI output (`src/lib/ana
 npm run dev        # dev server
 npm run build      # type-check + production build (dist/)
 npm run preview    # serve the production build
-npm test           # unit tests (analytics + normalisation)
+npm test           # unit tests (analytics, normalisation, Google Sheets source)
 ```
 
-Stack: React 19, TypeScript, Vite, Tailwind CSS 4, Recharts, Supabase JS, React Router.
+Stack: React 19, TypeScript, Vite, Tailwind CSS 4, Recharts, React Router. Data: Google Sheets through Apps Script (`google-sheets/Code.gs`), with Supabase as an alternative.
 
 ## Notes
 
-- Issue status changes are saved in the browser (localStorage). Feedback status changes are written to the database.
-- The RLS policies in `schema.sql` let the anon key read rows and update feedback. That suits a capstone demo. For production, require sign-in and limit updates to the `status` column.
+- Issue status changes are saved in the browser (localStorage). Feedback status changes are written back to the sheet.
+- Anyone with the Apps Script URL can read the feedback, and the token in the deployed dashboard is not a real secret. That suits a capstone demo; see the notes in `google-sheets/README.md` before using real customer data.

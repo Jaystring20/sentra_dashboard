@@ -1,0 +1,2 @@
+id,original_message,subject,source,received_at,customer_name,customer_email,sentiment,sentiment_score,category,theme,issue,severity,ai_summary,status,created_at,gmail_message_id
+FB-0001,"It took over a week for anyone from support to respond to my email.",No response to my ticket,Gmail,2026-10-01T09:15:00Z,Fatima Rossi,fatima.rossi@example.com,negative,-0.82,Complaint,Customer Support,Slow support response time,high,Customer is frustrated by a multi-day wait for a support reply.,new,2026-10-01T09:16:00Z,

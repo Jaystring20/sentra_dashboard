@@ -81,12 +81,12 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
 
 function SourceStatus() {
   const { lastSynced, error } = useData()
-  const live = dataSource.mode === 'supabase'
+  const live = dataSource.mode !== 'demo'
   return (
     <div className="rounded-lg border border-border p-3 text-xs">
       <div className="flex items-center gap-2 font-medium text-ink">
         <span className={clsx('size-2 rounded-full', error ? 'bg-critical' : live ? 'bg-good' : 'bg-warning')} />
-        {error ? 'Connection error' : live ? 'Live · Supabase' : 'Demo data'}
+        {error ? 'Connection error' : live ? `Live · ${dataSource.label}` : 'Demo data'}
       </div>
       <p className="mt-1 text-ink-3">{lastSynced ? `Synced ${lastSynced.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : error ? 'Not connected' : 'Connecting…'}</p>
     </div>

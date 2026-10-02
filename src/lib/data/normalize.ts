@@ -54,18 +54,25 @@ export function normalizeStatus(v: unknown): FeedbackStatus {
   return 'new'
 }
 
+/** Parses a date from the database or sheet; returns null when it is not a real date. */
+function toIso(v: unknown): string | null {
+  if (v == null || v === '') return null
+  const d = v instanceof Date ? v : new Date(typeof v === 'number' ? v : String(v))
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
 export function normalizeRecord(row: Record<string, unknown>): FeedbackRecord {
   const scoreRaw = normalizeScore(row.sentiment_score, str(row.sentiment))
   const sentiment = normalizeSentiment(row.sentiment, scoreRaw)
-  const created = str(row.created_at) || new Date().toISOString()
-  const received = str(row.received_at) || created
+  const created = toIso(row.created_at) ?? toIso(row.received_at) ?? new Date().toISOString()
+  const received = toIso(row.received_at) ?? created
   const issue = nullable(row.issue)
   return {
     id: str(row.id),
     original_message: str(row.original_message ?? row.message ?? row.body),
     subject: nullable(row.subject),
     source: titleCaseSource(str(row.source) || 'Gmail'),
-    received_at: new Date(received).toISOString(),
+    received_at: received,
     customer_name: nullable(row.customer_name),
     customer_email: nullable(row.customer_email),
     sentiment,
@@ -76,7 +83,7 @@ export function normalizeRecord(row: Record<string, unknown>): FeedbackRecord {
     severity: normalizeSeverity(row.severity),
     ai_summary: str(row.ai_summary ?? row.summary),
     status: normalizeStatus(row.status),
-    created_at: new Date(created).toISOString(),
+    created_at: created,
   }
 }
 

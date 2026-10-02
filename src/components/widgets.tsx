@@ -1,7 +1,8 @@
 import clsx from 'clsx'
-import { Bot, ChevronRight, Database, LayoutDashboard, Mail, Sparkles, Workflow } from 'lucide-react'
+import { Bot, ChevronRight, Database, LayoutDashboard, Mail, Sheet, Sparkles, Workflow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Kpi } from '../lib/analytics'
+import { dataSource } from '../lib/data/source'
 import { useData } from '../lib/store'
 import { Card, CardHeader, Delta } from './ui'
 
@@ -58,7 +59,7 @@ export function PipelineStrip({ compact = false }: { compact?: boolean }) {
     { icon: <Mail size={15} />, label: 'Gmail', detail: 'Feedback intake' },
     { icon: <Workflow size={15} />, label: 'n8n', detail: 'Automation' },
     { icon: <Bot size={15} />, label: 'AI analysis', detail: 'Sentiment · theme · issue' },
-    { icon: <Database size={15} />, label: 'Database', detail: `${records.length.toLocaleString()} records` },
+    { icon: dataSource.mode === 'sheets' ? <Sheet size={15} /> : <Database size={15} />, label: dataSource.mode === 'sheets' ? 'Google Sheet' : 'Database', detail: `${records.length.toLocaleString()} records` },
     { icon: <LayoutDashboard size={15} />, label: 'Sentra', detail: latest ? `Last record ${timeAgo(latest.created_at)}` : 'Waiting for data' },
   ]
   return (

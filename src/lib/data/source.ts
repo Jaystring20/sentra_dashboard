@@ -1,10 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { ExecutiveSummary, FeedbackRecord, FeedbackStatus } from '../types'
-import { config, isSupabaseConfigured } from './config'
+import { config, isSheetsConfigured, isSupabaseConfigured } from './config'
 import { generateDemoFeedback } from './demo'
 import { normalizeRecord } from './normalize'
+import { loadSheetFeedback, loadSheetSummary, updateSheetStatus } from './sheets'
 
-export type SourceMode = 'supabase' | 'demo'
+export type SourceMode = 'sheets' | 'supabase' | 'demo'
 
 export interface DataSource {
   mode: SourceMode
@@ -80,6 +81,27 @@ class SupabaseSource implements DataSource {
   }
 }
 
+class SheetsSource implements DataSource {
+  mode = 'sheets' as const
+  label = 'Google Sheets'
+  loadFeedback = loadSheetFeedback
+  loadSummary = loadSheetSummary
+  updateStatus = updateSheetStatus
+
+  subscribe(onChange: () => void) {
+    // Apps Script has no push channel, so poll; skip while the tab is hidden.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') onChange()
+    }, config.sheetsPollSeconds * 1000)
+    const onVisible = () => document.visibilityState === 'visible' && onChange()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }
+}
+
 class DemoSource implements DataSource {
   mode = 'demo' as const
   label = 'Demo data'
@@ -111,7 +133,7 @@ class DemoSource implements DataSource {
   }
 }
 
-export const dataSource: DataSource = isSupabaseConfigured ? new SupabaseSource() : new DemoSource()
+export const dataSource: DataSource = isSheetsConfigured ? new SheetsSource() : isSupabaseConfigured ? new SupabaseSource() : new DemoSource()
 
 export function simulateIncoming(record: FeedbackRecord) {
   if (dataSource instanceof DemoSource) dataSource.simulateIncoming(record)
